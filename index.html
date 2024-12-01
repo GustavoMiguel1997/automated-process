@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extrair Texto de Múltiplos PDFs</title>
+</head>
+<body>
+  <h1>Extrair Texto de Múltiplos PDFs</h1>
+  <input type="file" id="pdfInput" accept="application/pdf" multiple />
+  <button id="downloadZip">Baixar ZIP com PDFs Renomeados</button>
+  <pre id="output"></pre>
+
+  <!-- Adicione o PDF.js via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    // Configurar o worker para o PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const pdfInput = document.getElementById('pdfInput');
+    const output = document.getElementById('output');
+    const downloadZipButton = document.getElementById('downloadZip');
+    const zip = new JSZip();
+
+    pdfInput.addEventListener('change', async () => {
+      const files = pdfInput.files;
+      if (!files.length) return;
+
+      output.textContent = ''; // Limpar saída
+      zip.files = {}; // Limpar qualquer conteúdo do ZIP anterior
+
+      for (const file of files) {
+        await processPdf(file); // Processar cada arquivo PDF
+      }
+    });
+
+    downloadZipButton.addEventListener('click', () => {
+      zip.generateAsync({ type: 'blob' })
+        .then(function(content) {
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(content);
+          link.download = 'arquivos_renomeados.zip';
+          link.click();
+        });
+    });
+
+    async function processPdf(file) {
+      const fileReader = new FileReader();
+
+      return new Promise((resolve) => {
+        fileReader.onload = async function () {
+          const typedArray = new Uint8Array(this.result);
+
+          try {
+            // Carregar o PDF
+            const pdf = await pdfjsLib.getDocument(typedArray).promise;
+            let fullText = '';
+
+            // Iterar por todas as páginas
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+              const page = await pdf.getPage(pageNum);
+              const textContent = await page.getTextContent();
+
+              // Concatenar todo o texto da página
+              const pageText = textContent.items.map(item => item.str).join(' ');
+              fullText += `--- Página ${pageNum} ---\n${pageText}\n\n`;
+            }
+
+            // Exibir o resultado no elemento de saída
+            output.textContent += `=== Arquivo: ${file.name} ===\n${fullText}\n\n`;
+
+            // Extrair o nome e gerar o novo nome
+            const newFileName = extractName(fullText) || file.name; // Usar o nome extraído ou o nome original
+            await addToZip(file, newFileName); // Adicionar o arquivo ao ZIP com o novo nome
+
+          } catch (err) {
+            console.error(`Erro ao processar o PDF "${file.name}":`, err);
+            output.textContent += `Erro ao processar o PDF "${file.name}".\n`;
+          }
+          resolve();
+        };
+
+        fileReader.readAsArrayBuffer(file);
+      });
+    }
+
+    function extractName(text) {
+      const regexName = /NOME\/RAZÃO SOCIAL\s(.*?)(?=\sCNPJ\/CPF)/i;
+      const matchName = text.match(regexName);
+
+      const nfeRegex = /000\.\d{3}\.\d{3}/i;
+      const matchNFE = text.match(nfeRegex);
+
+      let fileName = '';
+
+      if(matchNFE && matchNFE[0]){
+        fileName += matchNFE[0].replace(/^0+|\.|(?<=^|\.)0+/g, '');
+      }
+
+      if (matchName && matchName[1]) {
+        fileName +=  ' - ' + matchName[1].trim() + '.pdf'
+        return fileName
+      }
+      
+      return 'Ocorreu um erro';
+    }
+
+    async function addToZip(file, newFileName) {
+      const blob = new Blob([file], { type: 'application/pdf' });
+      zip.file(newFileName, blob); // Adiciona o arquivo ao ZIP com o nome novo
+    }
+  </script>
+</body>
+</html>
