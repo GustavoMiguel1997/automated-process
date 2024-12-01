@@ -7,9 +7,50 @@
 </head>
 <body>
   <h1>Extrair Texto de Múltiplos PDFs</h1>
+  <div class="container" id="loading-container">
+    <span class="loader"></span>
+  </div>
   <input type="file" id="pdfInput" accept="application/pdf" multiple />
-  <button id="downloadZip">Baixar ZIP com PDFs Renomeados</button>
   <pre id="output"></pre>
+
+  <style>
+    * {
+        margin: 0;
+        padding: 0;
+    }
+
+    .container {
+        display: none;
+        position: absolute;
+        background-color: #32323287;
+        top: 0;
+        left: 0;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        width: 100%;
+    }
+
+    .loader {
+    width: 48px;
+    height: 48px;
+    border: 5px solid #FFF;
+    border-bottom-color: #3b3b3b;
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 1s linear infinite;
+    }
+
+    @keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+    } 
+  </style>
 
   <!-- Adicione o PDF.js via CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -25,26 +66,31 @@
     const zip = new JSZip();
 
     pdfInput.addEventListener('change', async () => {
+       document.getElementById('loading-container').style.setProperty("display", "flex")
+
       const files = pdfInput.files;
       if (!files.length) return;
 
-      output.textContent = ''; // Limpar saída
-      zip.files = {}; // Limpar qualquer conteúdo do ZIP anterior
+      output.textContent = '';
+      zip.files = {};
 
       for (const file of files) {
-        await processPdf(file); // Processar cada arquivo PDF
+        await processPdf(file);
       }
+
+      document.getElementById('loading-container').style.setProperty("display", "none")
+      download()
     });
 
-    downloadZipButton.addEventListener('click', () => {
-      zip.generateAsync({ type: 'blob' })
+    function download(){
+        zip.generateAsync({ type: 'blob' })
         .then(function(content) {
           const link = document.createElement('a');
           link.href = URL.createObjectURL(content);
           link.download = 'arquivos_renomeados.zip';
           link.click();
         });
-    });
+    }
 
     async function processPdf(file) {
       const fileReader = new FileReader();
@@ -95,13 +141,23 @@
 
       let fileName = '';
 
+
       if(matchNFE && matchNFE[0]){
         fileName += matchNFE[0].replace(/^0+|\.|(?<=^|\.)0+/g, '');
       }
 
-      if (matchName && matchName[1]) {
+      if (matchName && matchName[1].trim()) {
         fileName +=  ' - ' + matchName[1].trim() + '.pdf'
         return fileName
+      } else {
+        const regexName2 = /DESTINATÁRIO\s(.*?)(?=\sNOME\/RAZÃO SOCIAL)/i;
+        const matchName2 = text.match(regexName2);
+
+
+        if(matchName2 && matchName2[1].trim()){
+            return fileName +=  ' - ' + matchName2[1].trim() + '.pdf'
+        }
+
       }
       
       return 'Ocorreu um erro';
